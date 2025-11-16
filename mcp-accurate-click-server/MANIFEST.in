@@ -1,0 +1,27 @@
+# Include additional files in distribution package
+
+# Documentation
+include README.md
+include LICENSE
+include CHANGELOG.md
+
+# Configuration files
+include pyproject.toml
+include setup.py
+include requirements*.txt
+
+# Scripts
+recursive-include scripts *.sh *.py
+
+# Tests
+recursive-include tests *.py
+
+# Type stubs
+recursive-include src *.pyi
+
+# Exclude files
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude .DS_Store
+global-exclude *.swp
+global-exclude *.swo

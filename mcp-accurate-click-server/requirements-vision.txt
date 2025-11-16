@@ -1,0 +1,22 @@
+# Vision/OCR dependencies for mcp-accurate-click-server
+# Install with: pip install -r requirements-vision.txt
+
+# Include base requirements
+-r requirements.txt
+
+# Computer vision
+opencv-python>=4.8.0
+
+# OCR (Optical Character Recognition)
+pytesseract>=0.3.10
+
+# Image processing
+Pillow>=10.0.0
+
+# Numerical computing
+numpy>=1.24.0
+
+# Optional: Additional vision libraries
+# scikit-image>=0.21.0
+# tensorflow>=2.13.0  # For deep learning-based approaches
+# torch>=2.0.0  # Alternative deep learning framework

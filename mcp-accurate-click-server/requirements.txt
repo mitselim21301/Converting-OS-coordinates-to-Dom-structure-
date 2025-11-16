@@ -1,0 +1,29 @@
+# Core dependencies for mcp-accurate-click-server
+# For production installation: pip install -r requirements.txt
+# For development: pip install -r requirements-dev.txt
+
+# Browser automation
+playwright>=1.40.0
+
+# Numerical computing (coordinate transformations)
+numpy>=1.24.0
+
+# Data validation and settings
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# HTTP client
+httpx>=0.24.0
+
+# Environment configuration
+python-dotenv>=1.0.0
+
+# Type hints support
+typing-extensions>=4.5.0
+
+# Async support
+asyncio-throttle>=1.0.0
+
+# Windows API support (Windows only)
+pywin32>=306; platform_system=="Windows"
+comtypes>=1.2.0; platform_system=="Windows"
