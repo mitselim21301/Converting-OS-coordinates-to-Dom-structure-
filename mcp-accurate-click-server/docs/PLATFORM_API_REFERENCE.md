@@ -786,31 +786,49 @@ except InputSimulationError as e:
 
 ## Thread Safety
 
-### Thread-Safe Usage
+All platform components are **thread-safe singletons** that can be safely accessed from multiple threads concurrently.
+
+### Thread-Safe Singleton Usage
 
 ```python
-from mcp_server.platform import PlatformFactory
+from mcp_server.platform import get_coordinate_converter, get_window_manager
 import threading
 
-# Create converters per thread (recommended)
-def worker_thread():
-    converter = PlatformFactory.get_coordinate_converter()
-    # Each thread has its own converter instance
-    vp_x, vp_y = converter.os_to_viewport(1920, 1080)
+# All threads share the same thread-safe singleton instance
+def worker_thread(thread_id):
+    # Safe to call from multiple threads - returns shared singleton
+    converter = get_coordinate_converter()
 
-# Start multiple threads
-threads = [threading.Thread(target=worker_thread) for _ in range(4)]
+    # All coordinate conversions are thread-safe
+    vp_x, vp_y = converter.os_to_viewport(1920, 1080)
+    print(f"Thread {thread_id}: viewport coords = ({vp_x}, {vp_y})")
+
+    # Window manager is also a thread-safe singleton
+    wm = get_window_manager()
+    windows = wm.find_browser_windows()
+
+# Start multiple threads - all share the same singleton instances
+threads = [threading.Thread(target=worker_thread, args=(i,)) for i in range(4)]
 for t in threads:
     t.start()
 for t in threads:
     t.join()
 ```
 
-### Important Notes
+### Thread-Safety Guarantees
 
-1. **Per-Thread Converters**: Create a new converter per thread
-2. **Shared DPI Cache**: Thread-safe if caching is enabled
-3. **Input Simulation**: Serialize click/input operations
+1. **Singleton Pattern**: Each component uses double-check locking for thread-safe initialization
+2. **Cache Operations**: Monitor and display caches are protected by internal locks
+3. **Concurrent Access**: All public methods are safe to call from multiple threads
+4. **Resource Cleanup**: Automatic cleanup via destructors - no manual resource management needed
+5. **Input Simulation**: Click/keyboard operations are atomic and thread-safe
+
+### Implementation Details
+
+- **CoordinateConverter**: Cache-aside pattern with `threading.Lock()` protecting cache reads/writes
+- **WindowManager**: Thread-safe singleton with automatic X11/Wayland connection cleanup
+- **DPIHandler**: Thread-safe DPI queries with per-monitor caching
+- **InputSimulator**: Thread-safe input operations with retry logic
 
 ---
 
