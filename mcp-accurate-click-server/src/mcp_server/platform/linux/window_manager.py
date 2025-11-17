@@ -61,6 +61,10 @@ class LinuxWindowManager(PlatformWindowManager):
     """
     Manages browser window detection and tracking on Linux.
 
+    Thread-safe singleton implementation with automatic resource cleanup.
+    Safe for concurrent access from multiple threads. X11 display connections
+    are automatically closed when the singleton is garbage collected.
+
     Supports both X11 and Wayland display servers with multiple fallback methods.
     """
 
@@ -168,6 +172,12 @@ class LinuxWindowManager(PlatformWindowManager):
                 logger.info("Initialized X11 window manager with python-xlib")
             except Exception as e:
                 logger.warning(f"Failed to initialize X11 display: {e}. Falling back to subprocess.")
+                # Close display connection if it was opened before failure
+                if hasattr(self, 'x_display') and self.x_display:
+                    try:
+                        self.x_display.close()
+                    except Exception:
+                        pass
                 self.x_display = None
 
         # Check availability of command-line tools
@@ -1067,7 +1077,15 @@ _window_manager_lock = threading.Lock()
 
 
 def get_window_manager() -> LinuxWindowManager:
-    """Get or create singleton LinuxWindowManager instance (thread-safe)."""
+    """
+    Get or create singleton LinuxWindowManager instance.
+
+    Thread-safe: Uses double-check locking pattern for safe initialization
+    from multiple threads.
+
+    Returns:
+        LinuxWindowManager: Singleton instance
+    """
     global _window_manager
     if _window_manager is None:
         with _window_manager_lock:

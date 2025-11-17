@@ -40,6 +40,10 @@ class LinuxCoordinateConverter(PlatformCoordinateConverter):
     """
     Converts coordinates between different coordinate spaces on Linux.
 
+    Thread-safe singleton implementation with protected cache operations.
+    Safe for concurrent access from multiple threads. Monitor and display
+    configuration caching is protected by internal locks.
+
     Coordinate Spaces:
     - Physical: Raw hardware pixels from the OS
     - Logical: DPI-scaled coordinates (system DPI aware)
@@ -68,6 +72,7 @@ class LinuxCoordinateConverter(PlatformCoordinateConverter):
         self._virtual_screen_cache: Optional[Rectangle] = None
         self._monitors_cache: List[MonitorInfo] = []
         self._cache_valid = False
+        self._cache_lock = threading.Lock()  # Protect cache operations from race conditions
         self._edge_case_detection = None
 
         # Check for edge cases
@@ -137,8 +142,10 @@ class LinuxCoordinateConverter(PlatformCoordinateConverter):
         Returns:
             List of MonitorInfo objects
         """
-        if not refresh and self._cache_valid and self._monitors_cache:
-            return self._monitors_cache
+        # Check cache with lock protection
+        with self._cache_lock:
+            if not refresh and self._cache_valid and self._monitors_cache:
+                return self._monitors_cache
 
         monitors = []
 
@@ -227,8 +234,10 @@ class LinuxCoordinateConverter(PlatformCoordinateConverter):
                 )
                 logger.debug(f"No primary found, using {monitors[0].name} as primary")
 
-            self._monitors_cache = monitors
-            self._cache_valid = True
+            # Update cache with lock protection
+            with self._cache_lock:
+                self._monitors_cache = monitors
+                self._cache_valid = True
 
         except subprocess.TimeoutExpired:
             logger.error("xrandr command timed out")
@@ -249,8 +258,10 @@ class LinuxCoordinateConverter(PlatformCoordinateConverter):
         Returns:
             List of MonitorInfo objects
         """
-        if not refresh and self._cache_valid and self._monitors_cache:
-            return self._monitors_cache
+        # Check cache with lock protection
+        with self._cache_lock:
+            if not refresh and self._cache_valid and self._monitors_cache:
+                return self._monitors_cache
 
         monitors = []
 
@@ -279,8 +290,10 @@ class LinuxCoordinateConverter(PlatformCoordinateConverter):
                 name="default"
             )]
 
-        self._monitors_cache = monitors
-        self._cache_valid = True
+        # Update cache with lock protection
+        with self._cache_lock:
+            self._monitors_cache = monitors
+            self._cache_valid = True
         return monitors
 
     def _parse_wlr_randr(self) -> List[MonitorInfo]:
@@ -437,8 +450,10 @@ class LinuxCoordinateConverter(PlatformCoordinateConverter):
         Returns:
             Rectangle containing virtual screen bounds in physical pixels
         """
-        if not refresh and self._virtual_screen_cache:
-            return self._virtual_screen_cache
+        # Check cache with lock protection
+        with self._cache_lock:
+            if not refresh and self._virtual_screen_cache:
+                return self._virtual_screen_cache
 
         # Get all monitors
         if self.display_server == 'x11':
@@ -449,8 +464,9 @@ class LinuxCoordinateConverter(PlatformCoordinateConverter):
         if not monitors:
             # Fallback to reasonable default
             logger.warning("No monitors detected, using fallback bounds")
-            self._virtual_screen_cache = Rectangle(0, 0, 1920, 1080, "physical")
-            return self._virtual_screen_cache
+            with self._cache_lock:
+                self._virtual_screen_cache = Rectangle(0, 0, 1920, 1080, "physical")
+                return self._virtual_screen_cache
 
         # Calculate bounding box of all monitors
         min_x = min(m.left for m in monitors)
@@ -458,20 +474,23 @@ class LinuxCoordinateConverter(PlatformCoordinateConverter):
         max_x = max(m.right for m in monitors)
         max_y = max(m.bottom for m in monitors)
 
-        self._virtual_screen_cache = Rectangle(
-            left=min_x,
-            top=min_y,
-            right=max_x,
-            bottom=max_y,
-            coordinate_space="physical"
-        )
+        # Update cache with lock protection
+        with self._cache_lock:
+            self._virtual_screen_cache = Rectangle(
+                left=min_x,
+                top=min_y,
+                right=max_x,
+                bottom=max_y,
+                coordinate_space="physical"
+            )
 
         logger.debug(
             f"Virtual screen: ({min_x}, {min_y}) to ({max_x}, {max_y}), "
             f"size: {max_x - min_x}x{max_y - min_y}"
         )
 
-        return self._virtual_screen_cache
+        with self._cache_lock:
+            return self._virtual_screen_cache
 
     def get_monitor_count(self) -> int:
         """Get the number of display monitors."""
@@ -899,9 +918,11 @@ class LinuxCoordinateConverter(PlatformCoordinateConverter):
 
         Call this when monitors are added/removed or configuration changes.
         """
-        self._cache_valid = False
-        self._virtual_screen_cache = None
-        self._monitors_cache = []
+        # Clear cache with lock protection
+        with self._cache_lock:
+            self._cache_valid = False
+            self._virtual_screen_cache = None
+            self._monitors_cache = []
 
         # Force re-detection
         self.get_virtual_screen_bounds(refresh=True)
@@ -958,13 +979,16 @@ _converter_lock = threading.Lock()
 
 def get_converter(dpi_handler=None) -> LinuxCoordinateConverter:
     """
-    Get or create singleton LinuxCoordinateConverter instance (thread-safe).
+    Get or create singleton LinuxCoordinateConverter instance.
+
+    Thread-safe: Uses double-check locking pattern for safe initialization
+    from multiple threads.
 
     Args:
         dpi_handler: Optional PlatformDPIHandler instance
 
     Returns:
-        LinuxCoordinateConverter instance
+        LinuxCoordinateConverter: Singleton instance
     """
     global _converter
     if _converter is None:
