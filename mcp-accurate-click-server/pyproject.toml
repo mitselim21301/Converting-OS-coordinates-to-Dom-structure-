@@ -54,6 +54,16 @@ windows = [
     "comtypes>=1.2.0; platform_system=='Windows'",
 ]
 
+# Linux-specific dependencies
+# Note: System packages (xdotool, wmctrl, xrandr) should be installed separately:
+#   Ubuntu/Debian: sudo apt-get install xdotool wmctrl x11-utils
+#   Fedora/RHEL: sudo dnf install xdotool wmctrl libxrandr
+linux = [
+    "pynput>=1.7.6; platform_system=='Linux'",
+    "python-xlib>=0.33; platform_system=='Linux'",
+    "psutil>=5.9.0; platform_system=='Linux'",
+]
+
 # Vision/OCR capabilities
 vision = [
     "opencv-python>=4.8.0",
@@ -90,7 +100,7 @@ docs = [
 
 # All optional dependencies
 all = [
-    "mcp-accurate-click-server[windows,vision,dev,docs]",
+    "mcp-accurate-click-server[windows,linux,vision,dev,docs]",
 ]
 
 [project.urls]
@@ -154,7 +164,7 @@ strict_optional = true
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["playwright.*", "pywin32.*", "comtypes.*"]
+module = ["playwright.*", "pywin32.*", "comtypes.*", "pynput.*", "Xlib.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

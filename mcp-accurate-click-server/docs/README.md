@@ -32,6 +32,68 @@ This directory contains comprehensive documentation for the MCP Accurate Click S
    - Platform-specific issues
    - FAQ
 
+### Cross-Platform Support Documentation
+
+5. **[CROSS_PLATFORM_GUIDE.md](CROSS_PLATFORM_GUIDE.md)** - Platform abstraction architecture
+   - Unified platform abstraction layer
+   - Platform adapters for Windows, Linux, macOS
+   - Coordinate system differences
+   - Implementation guide for new platforms
+   - Testing strategy
+   - Migration guide
+
+6. **[PLATFORM_API_REFERENCE.md](PLATFORM_API_REFERENCE.md)** - Platform abstraction layer API
+   - PlatformFactory and base classes
+   - Coordinate transformer interface
+   - Click validator interface
+   - Input simulator interface
+   - Platform-specific implementations
+   - Error handling and thread safety
+   - Complete code examples
+
+7. **[SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md)** - Minimum and recommended requirements
+   - Minimum vs. recommended specifications
+   - Windows 10/11 requirements
+   - Linux (X11/Wayland) requirements
+   - macOS requirements (experimental)
+   - Dependency lists for each platform
+   - Hardware and network requirements
+   - Compatibility matrix
+   - Verification checklist
+
+### Linux-Specific Documentation
+
+8. **[LINUX_SETUP.md](LINUX_SETUP.md)** - Linux installation and setup guide
+   - System dependencies for X11 and Wayland
+   - Step-by-step installation
+   - Display server configuration
+   - DPI detection and configuration
+   - Verification procedures
+   - Troubleshooting for Linux-specific issues
+   - Performance tuning
+
+9. **[LINUX_CODE_EXAMPLES.md](LINUX_CODE_EXAMPLES.md)** - Linux usage examples
+   - Basic usage and initialization
+   - DPI detection and handling
+   - Coordinate transformation on Linux
+   - Click operations
+   - Input simulation
+   - Multi-monitor setup
+   - Display server detection (X11 vs Wayland)
+   - Advanced examples and patterns
+
+### Performance and Optimization
+
+10. **[PERFORMANCE_BENCHMARKS.md](PERFORMANCE_BENCHMARKS.md)** - Performance metrics across platforms
+    - Overall performance summary
+    - Methodology and test environments
+    - Windows performance benchmarks
+    - Linux performance benchmarks (X11/Wayland)
+    - macOS performance (experimental)
+    - Comparative platform analysis
+    - Optimization recommendations
+    - Profiling guide for performance monitoring
+
 ## Research Papers
 
 The server is built on extensive research documented in the parent directory:
@@ -64,16 +126,31 @@ The server is built on extensive research documented in the parent directory:
 - [Main README](../README.md)
 - [Installation](CONFIGURATION.md#installation)
 - [Quick Start](../README.md#quick-start)
+- [System Requirements](SYSTEM_REQUIREMENTS.md)
 
-### Development
+### Linux Users
+- [Linux Setup Guide](LINUX_SETUP.md)
+- [Linux Code Examples](LINUX_CODE_EXAMPLES.md)
+- [Display Server Configuration](LINUX_SETUP.md#display-server-setup)
+- [DPI Detection](LINUX_CODE_EXAMPLES.md#dpi-detection)
+
+### Development & Architecture
 - [Architecture Overview](ARCHITECTURE.md)
 - [API Reference](API.md)
+- [Platform Abstraction Guide](CROSS_PLATFORM_GUIDE.md)
+- [Platform API Reference](PLATFORM_API_REFERENCE.md)
 - [Examples](../examples/)
+
+### Performance & Optimization
+- [Performance Benchmarks](PERFORMANCE_BENCHMARKS.md)
+- [Optimization Tips](PERFORMANCE_BENCHMARKS.md#optimization-recommendations)
+- [Profiling Guide](PERFORMANCE_BENCHMARKS.md#profiling-guide)
 
 ### Troubleshooting
 - [Common Issues](TROUBLESHOOTING.md)
 - [Platform-Specific](TROUBLESHOOTING.md#platform-specific-issues)
-- [Performance](TROUBLESHOOTING.md#performance-issues)
+- [Performance Issues](TROUBLESHOOTING.md#performance-issues)
+- [Linux Troubleshooting](LINUX_SETUP.md#troubleshooting)
 
 ## Key Concepts
 
@@ -102,12 +179,19 @@ OS Screen → CSS Screen → Viewport → DOM Element
 
 ## Version History
 
-- **v1.0.0** (2025-11-16) - Initial release
+- **v1.0.0** (2025-11-17) - Initial production release with cross-platform support
   - Sub-pixel coordinate transformation
   - DOM structure extraction
   - Accessibility tree support
   - MCP protocol implementation
-  - Windows DPI handling
+  - **Windows Support**: Full DPI handling, multi-monitor
+  - **Linux Support**: X11 and Wayland, xrandr/wlr-randr DPI detection
+  - **macOS Support**: Experimental with Quartz Display Services
+  - Comprehensive cross-platform documentation
+  - Platform abstraction layer with unified API
+  - Performance benchmarks for all platforms
+  - Linux setup guide and code examples
+  - System requirements and compatibility matrix
 
 ## Contributing
 
