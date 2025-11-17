@@ -250,10 +250,11 @@ class LinuxDPIHandler(PlatformDPIHandler):
                 dpi_y = int((height * 25.4) / height_mm) if height_mm > 0 else self.DEFAULT_DPI
 
                 # Sanity check - if DPI is unrealistic, use default
-                if dpi_x < 50 or dpi_x > 500:
+                # Note: 8K displays and Retina can exceed 500 DPI, so upper limit is 800
+                if dpi_x < 50 or dpi_x > 800:
                     logger.warning(f"Unrealistic DPI calculated for {name}: {dpi_x}. Using default.")
                     dpi_x = self.DEFAULT_DPI
-                if dpi_y < 50 or dpi_y > 500:
+                if dpi_y < 50 or dpi_y > 800:
                     dpi_y = self.DEFAULT_DPI
 
                 # Apply environment variable scaling if present
@@ -456,24 +457,27 @@ class LinuxDPIHandler(PlatformDPIHandler):
             height_mm = data.get('height_mm', 0)
             scale = data.get('scale', 1.0)
 
-            # Calculate DPI from physical dimensions
-            if width_mm > 0 and height_mm > 0:
-                dpi_x = int((width * 25.4) / width_mm)
-                dpi_y = int((height * 25.4) / height_mm)
-            else:
-                dpi_x = self.DEFAULT_DPI
-                dpi_y = self.DEFAULT_DPI
-
-            # Apply Wayland scale factor
-            dpi_x = int(dpi_x * scale)
-            dpi_y = int(dpi_y * scale)
-
-            # Apply environment scaling if present
+            # Calculate DPI - use environment scaling if present, otherwise use compositor scale
             if self._env_scale_factor:
+                # Environment variable takes precedence
                 dpi_x = int(self.DEFAULT_DPI * self._env_scale_factor)
                 dpi_y = int(self.DEFAULT_DPI * self._env_scale_factor)
-
-            scale_factor = dpi_x / self.DEFAULT_DPI
+                scale_factor = self._env_scale_factor
+            elif scale != 1.0:
+                # Use Wayland compositor scale
+                dpi_x = int(self.DEFAULT_DPI * scale)
+                dpi_y = int(self.DEFAULT_DPI * scale)
+                scale_factor = scale
+            elif width_mm > 0 and height_mm > 0:
+                # Calculate from physical dimensions if no scaling info
+                dpi_x = int((width * 25.4) / width_mm)
+                dpi_y = int((height * 25.4) / height_mm)
+                scale_factor = dpi_x / self.DEFAULT_DPI
+            else:
+                # Fallback to default
+                dpi_x = self.DEFAULT_DPI
+                dpi_y = self.DEFAULT_DPI
+                scale_factor = 1.0
 
             return MonitorInfo(
                 handle=name,

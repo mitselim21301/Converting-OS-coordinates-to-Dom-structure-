@@ -896,23 +896,43 @@ class LinuxWindowManager(PlatformWindowManager):
         Returns:
             WindowInfo for window at point or None
         """
-        # For X11 with xdotool
-        if self.display_type == 'x11' and self.has_xdotool:
+        # For X11 with native python-xlib (most accurate)
+        if self.display_type == 'x11' and self.x_display:
             try:
-                result = subprocess.run(
-                    ['xdotool', 'getwindowfocus'],
-                    capture_output=True,
-                    text=True,
-                    timeout=1
-                )
+                # Get all windows from the window manager
+                # Query _NET_CLIENT_LIST_STACKING for window stack order (bottom to top)
+                if self._net_client_list_stacking:
+                    try:
+                        prop = self.x_root.get_full_property(
+                            self._net_client_list_stacking,
+                            X.AnyPropertyType
+                        )
+                        if prop and prop.value:
+                            # Windows are listed bottom-to-top, we want top-to-bottom
+                            window_ids = list(reversed(prop.value))
 
-                if result.returncode == 0:
-                    window_id = self._parse_window_id(result.stdout.strip())
-                    if window_id:
-                        return self.get_window_info(window_id)
+                            # Check each window from top to bottom
+                            for wid in window_ids:
+                                try:
+                                    window = self.x_display.create_resource_object('window', wid)
+                                    geom = window.get_geometry()
 
-            except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
-                logger.debug(f"Failed to get window at point via xdotool: {e}")
+                                    # Translate to screen coordinates
+                                    coords = window.translate_coords(self.x_root, 0, 0)
+
+                                    # Check if point is within window bounds
+                                    if (coords.x <= x < coords.x + geom.width and
+                                        coords.y <= y < coords.y + geom.height):
+                                        return self.get_window_info(wid)
+
+                                except Exception as e:
+                                    continue
+
+                    except Exception as e:
+                        logger.debug(f"Failed to query stacking order: {e}")
+
+            except Exception as e:
+                logger.debug(f"Failed to get window at point via X11: {e}")
 
         # Fallback: Check all windows and see which contains the point
         all_windows = []

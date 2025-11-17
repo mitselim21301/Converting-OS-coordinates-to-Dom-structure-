@@ -105,7 +105,7 @@ def get_dpi_handler():
         from mcp_server.windows.dpi_handler import get_dpi_handler as get_win_dpi
         return get_win_dpi()
     elif platform_name == 'linux':
-        from mcp_server.platform.linux.dpi_handler import get_dpi_handler as get_linux_dpi
+        from mcp_server.platform.linux.dpi_handler import create_dpi_handler as get_linux_dpi
         return get_linux_dpi()
     elif platform_name == 'darwin':
         raise RuntimeError("macOS support is coming soon - platform implementation in progress")

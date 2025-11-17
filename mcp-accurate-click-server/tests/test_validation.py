@@ -1,741 +1,1474 @@
 """
-Test Click Validation
+Comprehensive Test Suite for Validation Modules
 
-Tests for click validation and verification:
-- Pre-click validation
-- Post-click verification
-- Element visibility checks
-- Clickability validation
-- Coordinate accuracy validation
-- Vision-based validation
-- Hybrid validation strategies
+Tests all 4 validation modules with 50+ tests:
+1. pre_click.py - Pre-click validation (visibility, interactability, stability, hit target, hover)
+2. post_click.py - Post-click verification (DOM changes, page state, network, events)
+3. confidence.py - Confidence scoring algorithms
+4. retry.py - Retry mechanisms with exponential backoff
+
+Target: 85%+ coverage for validation module
 """
 
 import pytest
+import asyncio
 import numpy as np
-from unittest.mock import Mock, MagicMock, patch
-from conftest import (
-    MockBoundingBox,
-    MockDOMElement,
-    assert_coordinates_close
+from unittest.mock import Mock, MagicMock, patch, AsyncMock
+from datetime import datetime, timedelta
+from typing import Dict, List, Any
+
+# Import validation modules
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+from mcp_server.validation.pre_click import (
+    VisibilityChecker,
+    InteractabilityChecker,
+    StabilityChecker,
+    HitTargetChecker,
+    HoverStateChecker,
+    PreClickValidator,
+    ValidationStatus,
+    ValidationIssue,
+)
+
+from mcp_server.validation.post_click import (
+    DOMChangeDetector,
+    PageStateDetector,
+    NetworkActivityDetector,
+    EventValidation,
+    PostClickValidator,
+    ClickResultMonitor,
+    ChangeType,
+    StateChange,
+)
+
+from mcp_server.validation.confidence import (
+    ClickConfidenceCalculator,
+    ClickConfidenceMonitor,
+    select_click_strategy,
+    Recommendation,
+    ActionType,
+    ClickStrategy,
+)
+
+from mcp_server.validation.retry import (
+    DelayCalculator,
+    ErrorClassifier,
+    RetryExecutor,
+    CircuitBreaker,
+    AdaptiveRetryExecutor,
+    RetryConfig,
+    RetryStrategy,
+    ErrorCategory,
+    RetryableError,
+    ElementClickInterceptedError,
+    ElementNotInteractableError,
+    StaleElementError,
 )
 
 
-class TestPreClickValidation:
-    """Test pre-click validation"""
-
-    def test_validate_coordinates_within_bounds(self, sample_dom_element):
-        """Test validating coordinates are within element bounds"""
-        bbox = sample_dom_element.bounding_box
-
-        # Test center (should be valid)
-        center_x = bbox.center_x
-        center_y = bbox.center_y
-
-        is_within = (
-            bbox.left <= center_x <= bbox.right and
-            bbox.top <= center_y <= bbox.bottom
-        )
-
-        assert is_within is True
-
-    def test_validate_coordinates_outside_bounds(self, sample_dom_element):
-        """Test detecting coordinates outside element bounds"""
-        bbox = sample_dom_element.bounding_box
-
-        # Test outside coordinates
-        x, y = bbox.right + 10, bbox.bottom + 10
-
-        is_within = (
-            bbox.left <= x <= bbox.right and
-            bbox.top <= y <= bbox.bottom
-        )
-
-        assert is_within is False
-
-    def test_validate_element_visible(self, sample_dom_element):
-        """Test validating element is visible"""
-        assert sample_dom_element.visible is True
-        assert sample_dom_element.display != "none"
-        assert sample_dom_element.visibility == "visible"
-        assert float(sample_dom_element.opacity) > 0
-
-    def test_validate_element_hidden(self):
-        """Test detecting hidden elements"""
-        bbox = MockBoundingBox(
-            x=0, y=0, width=0, height=0,
-            top=0, right=0, bottom=0, left=0,
-            page_x=0, page_y=0
-        )
-        hidden_elem = MockDOMElement(
-            tag_name="div",
-            element_id="hidden",
-            class_names=[],
-            role=None,
-            aria_label=None,
-            accessible_name=None,
-            text_content="Hidden",
-            inner_text="Hidden",
-            value=None,
-            placeholder=None,
-            bounding_box=bbox,
-            visible=False,
-            enabled=True,
-            focusable=False,
-            clickable=False,
-            xpath='//*[@id="hidden"]',
-            css_selector="#hidden",
-            depth=1,
-            parent_tag="body",
-            attributes={"id": "hidden"},
-            z_index="auto",
-            opacity="1",
-            display="none",
-            visibility="visible",
-            pointer_events="auto",
-            uid="hidden123"
-        )
-
-        # Should fail validation
-        is_valid = (
-            hidden_elem.visible and
-            hidden_elem.display != "none" and
-            hidden_elem.bounding_box.width > 0 and
-            hidden_elem.bounding_box.height > 0
-        )
-
-        assert is_valid is False
-
-    def test_validate_element_clickable(self, sample_dom_element):
-        """Test validating element is clickable"""
-        assert sample_dom_element.clickable is True
-        assert sample_dom_element.enabled is True
-        assert sample_dom_element.pointer_events != "none"
-
-    def test_validate_element_disabled(self):
-        """Test detecting disabled elements"""
-        bbox = MockBoundingBox(
-            x=100, y=100, width=100, height=30,
-            top=100, right=200, bottom=130, left=100,
-            page_x=100, page_y=100
-        )
-        disabled_elem = MockDOMElement(
-            tag_name="button",
-            element_id="disabled",
-            class_names=[],
-            role="button",
-            aria_label=None,
-            accessible_name="Disabled",
-            text_content="Disabled",
-            inner_text="Disabled",
-            value=None,
-            placeholder=None,
-            bounding_box=bbox,
-            visible=True,
-            enabled=False,  # Disabled
-            focusable=False,
-            clickable=True,
-            xpath='//*[@id="disabled"]',
-            css_selector="#disabled",
-            depth=1,
-            parent_tag="form",
-            attributes={"id": "disabled", "disabled": "true"},
-            z_index="auto",
-            opacity="0.5",
-            display="block",
-            visibility="visible",
-            pointer_events="none",
-            uid="disabled123"
-        )
-
-        # Should fail clickability validation
-        is_clickable = (
-            disabled_elem.clickable and
-            disabled_elem.enabled and
-            disabled_elem.pointer_events != "none"
-        )
-
-        assert is_clickable is False
-
-    def test_validate_element_in_viewport(self, sample_dom_element):
-        """Test validating element is in viewport"""
-        bbox = sample_dom_element.bounding_box
-        viewport_width = 1920
-        viewport_height = 1080
-
-        is_in_viewport = (
-            bbox.left < viewport_width and
-            bbox.right > 0 and
-            bbox.top < viewport_height and
-            bbox.bottom > 0
-        )
-
-        assert is_in_viewport is True
-
-    def test_validate_element_outside_viewport(self):
-        """Test detecting element outside viewport"""
-        bbox = MockBoundingBox(
-            x=2000, y=1200, width=100, height=50,
-            top=1200, right=2100, bottom=1250, left=2000,
-            page_x=2000, page_y=1200
-        )
-        viewport_width = 1920
-        viewport_height = 1080
-
-        is_in_viewport = (
-            bbox.left < viewport_width and
-            bbox.right > 0 and
-            bbox.top < viewport_height and
-            bbox.bottom > 0
-        )
-
-        assert is_in_viewport is False
-
-
-class TestClickabilityValidation:
-    """Test clickability validation"""
-
-    def test_validate_button_clickable(self):
-        """Test button is clickable"""
-        element = Mock()
-        element.tag_name = "button"
-        element.enabled = True
-        element.visible = True
-        element.pointer_events = "auto"
-
-        is_clickable = (
-            element.tag_name in ['button', 'a', 'input'] or
-            element.enabled and element.visible
-        )
-
-        assert is_clickable is True
-
-    def test_validate_link_clickable(self):
-        """Test link is clickable"""
-        element = Mock()
-        element.tag_name = "a"
-        element.enabled = True
-        element.visible = True
-
-        is_clickable = element.tag_name == "a"
-
-        assert is_clickable is True
-
-    def test_validate_div_with_onclick_clickable(self):
-        """Test div with onclick handler is clickable"""
-        element = Mock()
-        element.tag_name = "div"
-        element.attributes = {"onclick": "handleClick()"}
-        element.visible = True
-
-        has_onclick = "onclick" in element.attributes
-        is_clickable = has_onclick and element.visible
-
-        assert is_clickable is True
-
-    def test_validate_role_button_clickable(self):
-        """Test element with role=button is clickable"""
-        element = Mock()
-        element.tag_name = "div"
-        element.role = "button"
-        element.visible = True
-
-        is_clickable = element.role == "button"
-
-        assert is_clickable is True
-
-    def test_validate_pointer_cursor_clickable(self):
-        """Test element with cursor:pointer is clickable"""
-        element = Mock()
-        element.tag_name = "div"
-        element.style = {"cursor": "pointer"}
-        element.visible = True
-
-        has_pointer_cursor = element.style.get("cursor") == "pointer"
-        is_clickable = has_pointer_cursor
-
-        assert is_clickable is True
-
-    def test_validate_pointer_events_none_not_clickable(self):
-        """Test element with pointer-events:none is not clickable"""
-        element = Mock()
-        element.tag_name = "button"
-        element.pointer_events = "none"
-
-        is_clickable = element.pointer_events != "none"
-
-        assert is_clickable is False
-
-
-class TestCoordinateAccuracy:
-    """Test coordinate accuracy validation"""
-
-    def test_validate_coordinate_precision(self):
-        """Test validating coordinate precision"""
-        predicted = (100.5, 200.3)
-        actual = (100.7, 200.1)
-
-        error = np.sqrt(
-            (predicted[0] - actual[0])**2 +
-            (predicted[1] - actual[1])**2
-        )
-
-        # Sub-pixel accurate
-        assert error < 1.0
-
-    def test_validate_coordinate_tolerance(self):
-        """Test coordinate within tolerance"""
-        click_coords = (100, 200)
-        element_center = (101, 199)
-        tolerance = 5.0
-
-        distance = np.sqrt(
-            (click_coords[0] - element_center[0])**2 +
-            (click_coords[1] - element_center[1])**2
-        )
-
-        is_within_tolerance = distance <= tolerance
-
-        assert is_within_tolerance is True
-
-    def test_validate_coordinate_outside_tolerance(self):
-        """Test coordinate outside tolerance"""
-        click_coords = (100, 200)
-        element_center = (120, 230)
-        tolerance = 5.0
-
-        distance = np.sqrt(
-            (click_coords[0] - element_center[0])**2 +
-            (click_coords[1] - element_center[1])**2
-        )
-
-        is_within_tolerance = distance <= tolerance
-
-        assert is_within_tolerance is False
-
-    def test_validate_subpixel_accuracy(self):
-        """Test sub-pixel accuracy validation"""
-        error = 0.3  # pixels
-
-        is_subpixel = error < 1.0
-
-        assert is_subpixel is True
-
-    def test_validate_transformation_accuracy(self):
-        """Test transformation accuracy"""
-        source_points = np.array([[100, 200], [300, 400]])
-        target_points = np.array([[101, 199], [299, 401]])
-
-        errors = np.linalg.norm(source_points - target_points, axis=1)
-        max_error = np.max(errors)
-        mean_error = np.mean(errors)
-
-        assert max_error < 2.0
-        assert mean_error < 2.0
-
-
-class TestPostClickVerification:
-    """Test post-click verification"""
-
-    def test_verify_click_executed(self):
-        """Test verifying click was executed"""
-        click_event = Mock()
-        click_event.executed = True
-        click_event.timestamp = 1234567890.0
-
-        assert click_event.executed is True
-
-    def test_verify_element_state_changed(self):
-        """Test verifying element state changed after click"""
-        # Before click
-        button_state_before = {"text": "Click Me", "clicked": False}
-
-        # Simulate click
-        button_state_after = {"text": "Clicked!", "clicked": True}
-
-        # Verify state changed
-        state_changed = button_state_after["clicked"] != button_state_before["clicked"]
-
-        assert state_changed is True
-
-    def test_verify_page_navigation(self):
-        """Test verifying page navigated after click"""
-        url_before = "http://example.com/page1"
-        url_after = "http://example.com/page2"
-
-        navigation_occurred = url_after != url_before
-
-        assert navigation_occurred is True
-
-    def test_verify_element_focus(self):
-        """Test verifying element received focus"""
-        element = Mock()
-        element.has_focus = True
-
-        assert element.has_focus is True
-
-    def test_verify_dom_mutation(self):
-        """Test verifying DOM mutation after click"""
-        # Before
-        dom_before = ["div", "span", "button"]
-
-        # After click (new element added)
-        dom_after = ["div", "span", "button", "p"]
-
-        mutation_occurred = len(dom_after) > len(dom_before)
-
-        assert mutation_occurred is True
-
-    def test_verify_javascript_callback(self):
-        """Test verifying JavaScript callback executed"""
-        callback = Mock()
-        callback.called = True
-        callback.call_count = 1
-
-        assert callback.called is True
-        assert callback.call_count == 1
-
-
-class TestVisionBasedValidation:
-    """Test vision-based validation"""
-
-    def test_validate_element_visually_present(self):
-        """Test element is visually present in screenshot"""
-        # Mock screenshot analysis
-        screenshot = Mock()
-        screenshot.contains_element = True
-
-        assert screenshot.contains_element is True
-
-    def test_validate_element_text_visible(self):
-        """Test element text is visible via OCR"""
-        # Mock OCR result
-        ocr_text = "Submit"
-        expected_text = "Submit"
-
-        text_matches = ocr_text == expected_text
-
-        assert text_matches is True
-
-    def test_validate_element_color(self):
-        """Test element color validation"""
-        # Mock color detection
-        detected_color = (255, 0, 0)  # Red
-        expected_color = (255, 0, 0)  # Red
-
-        color_matches = detected_color == expected_color
-
-        assert color_matches is True
-
-    def test_validate_element_position_visual(self):
-        """Test element position via visual detection"""
-        # Mock visual detection
-        visual_position = (100, 200)
-        expected_position = (100, 200)
-        tolerance = 5
-
-        distance = np.sqrt(
-            (visual_position[0] - expected_position[0])**2 +
-            (visual_position[1] - expected_position[1])**2
-        )
-
-        position_matches = distance <= tolerance
-
-        assert position_matches is True
-
-    def test_validate_ui_element_recognition(self):
-        """Test UI element recognition via computer vision"""
-        # Mock element recognition
-        recognition_result = {
-            "type": "button",
-            "confidence": 0.95
+# ============================================================================
+# Test Pre-Click Validation Module
+# ============================================================================
+
+class TestVisibilityChecker:
+    """Test VisibilityChecker class"""
+
+    def test_check_visibility_valid_element(self):
+        """Test visibility check for valid visible element"""
+        element_info = {
+            'rect': {'width': 100, 'height': 50, 'left': 100, 'top': 100},
+            'computed_style': {
+                'display': 'block',
+                'visibility': 'visible',
+                'opacity': 1.0
+            },
+            'viewport': {'width': 1920, 'height': 1080},
+            'check_visibility': True
         }
 
-        is_button = recognition_result["type"] == "button"
-        is_confident = recognition_result["confidence"] > 0.9
+        visible, issues = VisibilityChecker.check_visibility(element_info)
 
-        assert is_button is True
-        assert is_confident is True
+        assert visible is True
+        assert all(issue.severity != 'error' for issue in issues)
 
+    def test_check_visibility_zero_dimensions(self):
+        """Test visibility check fails for zero dimensions"""
+        element_info = {
+            'rect': {'width': 0, 'height': 0, 'left': 100, 'top': 100},
+            'computed_style': {'display': 'block', 'visibility': 'visible', 'opacity': 1.0},
+            'viewport': {'width': 1920, 'height': 1080}
+        }
 
-class TestHybridValidation:
-    """Test hybrid validation (DOM + Vision)"""
+        visible, issues = VisibilityChecker.check_visibility(element_info)
 
-    def test_hybrid_element_validation(self):
-        """Test hybrid element validation"""
-        # DOM validation
-        dom_valid = True
-        dom_confidence = 0.9
+        assert visible is False
+        assert any('no dimensions' in issue.message.lower() for issue in issues)
 
-        # Vision validation
-        vision_valid = True
-        vision_confidence = 0.85
+    def test_check_visibility_display_none(self):
+        """Test visibility check fails for display: none"""
+        element_info = {
+            'rect': {'width': 100, 'height': 50, 'left': 100, 'top': 100},
+            'computed_style': {
+                'display': 'none',
+                'visibility': 'visible',
+                'opacity': 1.0
+            },
+            'viewport': {'width': 1920, 'height': 1080}
+        }
 
-        # Hybrid decision
-        hybrid_valid = dom_valid and vision_valid
-        hybrid_confidence = (dom_confidence + vision_confidence) / 2
+        visible, issues = VisibilityChecker.check_visibility(element_info)
 
-        assert hybrid_valid is True
-        assert hybrid_confidence > 0.8
+        assert visible is False
+        assert any('display: none' in issue.message.lower() for issue in issues)
 
-    def test_hybrid_coordinate_validation(self):
-        """Test hybrid coordinate validation"""
-        # DOM coordinates
-        dom_coords = (100, 200)
+    def test_check_visibility_hidden(self):
+        """Test visibility check fails for visibility: hidden"""
+        element_info = {
+            'rect': {'width': 100, 'height': 50, 'left': 100, 'top': 100},
+            'computed_style': {
+                'display': 'block',
+                'visibility': 'hidden',
+                'opacity': 1.0
+            },
+            'viewport': {'width': 1920, 'height': 1080}
+        }
 
-        # Vision coordinates
-        vision_coords = (101, 199)
+        visible, issues = VisibilityChecker.check_visibility(element_info)
 
-        # Calculate agreement
-        distance = np.sqrt(
-            (dom_coords[0] - vision_coords[0])**2 +
-            (dom_coords[1] - vision_coords[1])**2
-        )
+        assert visible is False
+        assert any('visibility: hidden' in issue.message.lower() for issue in issues)
 
-        coordinates_agree = distance < 5.0
+    def test_check_visibility_zero_opacity(self):
+        """Test visibility check fails for opacity: 0"""
+        element_info = {
+            'rect': {'width': 100, 'height': 50, 'left': 100, 'top': 100},
+            'computed_style': {
+                'display': 'block',
+                'visibility': 'visible',
+                'opacity': 0.0
+            },
+            'viewport': {'width': 1920, 'height': 1080}
+        }
 
-        assert coordinates_agree is True
+        visible, issues = VisibilityChecker.check_visibility(element_info)
 
-    def test_hybrid_fallback_strategy(self):
-        """Test fallback from DOM to vision"""
-        # DOM extraction failed
-        dom_available = False
+        assert visible is False
+        assert any('opacity' in issue.message.lower() for issue in issues)
 
-        # Use vision fallback
-        vision_available = True
+    def test_check_visibility_low_opacity_warning(self):
+        """Test visibility check warns for low opacity"""
+        element_info = {
+            'rect': {'width': 100, 'height': 50, 'left': 100, 'top': 100},
+            'computed_style': {
+                'display': 'block',
+                'visibility': 'visible',
+                'opacity': 0.3
+            },
+            'viewport': {'width': 1920, 'height': 1080}
+        }
 
-        use_vision = not dom_available and vision_available
+        visible, issues = VisibilityChecker.check_visibility(element_info)
 
-        assert use_vision is True
+        assert visible is True
+        assert any(issue.severity == 'warning' and 'opacity' in issue.message.lower() for issue in issues)
 
-    def test_hybrid_confidence_scoring(self):
-        """Test hybrid confidence scoring"""
-        # Different validation sources
-        validations = [
-            {"source": "dom", "valid": True, "confidence": 0.95},
-            {"source": "vision", "valid": True, "confidence": 0.85},
-            {"source": "accessibility", "valid": True, "confidence": 0.90}
-        ]
+    def test_check_visibility_outside_viewport(self):
+        """Test visibility check fails for element outside viewport"""
+        element_info = {
+            'rect': {'width': 100, 'height': 50, 'left': 2000, 'top': 100},
+            'computed_style': {'display': 'block', 'visibility': 'visible', 'opacity': 1.0},
+            'viewport': {'width': 1920, 'height': 1080}
+        }
 
-        # Calculate aggregate confidence
-        avg_confidence = np.mean([v["confidence"] for v in validations])
-        all_valid = all(v["valid"] for v in validations)
+        visible, issues = VisibilityChecker.check_visibility(element_info)
 
-        assert all_valid is True
-        assert avg_confidence > 0.85
+        assert visible is False
+        assert any('outside viewport' in issue.message.lower() for issue in issues)
 
+    def test_check_visibility_partially_visible(self):
+        """Test visibility check warns when element is partially visible"""
+        element_info = {
+            'rect': {'width': 200, 'height': 100, 'left': 1850, 'top': 100},
+            'computed_style': {'display': 'block', 'visibility': 'visible', 'opacity': 1.0},
+            'viewport': {'width': 1920, 'height': 1080}
+        }
 
-class TestValidationStrategies:
-    """Test different validation strategies"""
+        visible, issues = VisibilityChecker.check_visibility(element_info)
 
-    def test_strict_validation_strategy(self, sample_dom_element):
-        """Test strict validation (all checks must pass)"""
-        checks = [
-            sample_dom_element.visible,
-            sample_dom_element.enabled,
-            sample_dom_element.clickable,
-            sample_dom_element.bounding_box.area > 0,
-            sample_dom_element.pointer_events != "none"
-        ]
-
-        strict_valid = all(checks)
-
-        assert strict_valid is True
-
-    def test_lenient_validation_strategy(self, sample_dom_element):
-        """Test lenient validation (some checks can fail)"""
-        checks = [
-            sample_dom_element.visible,
-            sample_dom_element.clickable,
-            sample_dom_element.bounding_box.area > 0
-        ]
-
-        # Require at least 2 of 3 checks to pass
-        lenient_valid = sum(checks) >= 2
-
-        assert lenient_valid is True
-
-    def test_confidence_based_validation(self):
-        """Test confidence-based validation"""
-        validations = [
-            {"check": "visible", "passed": True, "weight": 1.0},
-            {"check": "clickable", "passed": True, "weight": 0.8},
-            {"check": "in_viewport", "passed": True, "weight": 0.6}
-        ]
-
-        weighted_score = sum(
-            v["weight"] if v["passed"] else 0
-            for v in validations
-        )
-        max_score = sum(v["weight"] for v in validations)
-
-        confidence = weighted_score / max_score
-
-        assert confidence > 0.9
-
-    def test_timeout_validation(self):
-        """Test validation with timeout"""
-        import time
-
-        start_time = time.time()
-        timeout = 5.0
-
-        # Simulate validation
-        time.sleep(0.01)
-
-        elapsed = time.time() - start_time
-        timed_out = elapsed > timeout
-
-        assert timed_out is False
-
-    def test_retry_validation(self):
-        """Test validation with retry logic"""
-        max_retries = 3
-        attempt = 0
-
-        while attempt < max_retries:
-            # Simulate validation attempt
-            attempt += 1
-
-            # Simulate success on third attempt
-            if attempt == 3:
-                success = True
-                break
-        else:
-            success = False
-
-        assert success is True
-        assert attempt <= max_retries
+        # Should still be visible but with warning
+        assert visible is True
+        assert any('visible' in issue.message.lower() for issue in issues if issue.severity == 'warning')
 
 
-class TestErrorDetection:
-    """Test error detection in validation"""
+class TestInteractabilityChecker:
+    """Test InteractabilityChecker class"""
 
-    def test_detect_element_not_found(self):
-        """Test detecting element not found error"""
-        element = None
+    def test_check_interactability_valid(self):
+        """Test interactability check for valid element"""
+        element_info = {
+            'attributes': {'disabled': False},
+            'computed_style': {'pointer_events': 'auto'},
+            'tag_name': 'button'
+        }
 
-        is_error = element is None
+        interactable, issues = InteractabilityChecker.check_interactability(element_info)
 
-        assert is_error is True
+        assert interactable is True
+        assert all(issue.severity != 'error' for issue in issues)
 
-    def test_detect_element_obscured(self):
-        """Test detecting obscured element"""
-        element = Mock()
-        element.z_index = "1"
+    def test_check_interactability_disabled(self):
+        """Test interactability check fails for disabled element"""
+        element_info = {
+            'attributes': {'disabled': True},
+            'computed_style': {'pointer_events': 'auto'},
+            'tag_name': 'button'
+        }
 
-        overlay = Mock()
-        overlay.z_index = "10"
-        overlay.overlaps = True
+        interactable, issues = InteractabilityChecker.check_interactability(element_info)
 
-        is_obscured = (
-            overlay.overlaps and
-            int(overlay.z_index) > int(element.z_index)
-        )
+        assert interactable is False
+        assert any('disabled' in issue.message.lower() for issue in issues)
 
-        assert is_obscured is True
+    def test_check_interactability_pointer_events_none(self):
+        """Test interactability check fails for pointer-events: none"""
+        element_info = {
+            'attributes': {},
+            'computed_style': {'pointer_events': 'none'},
+            'tag_name': 'div'
+        }
 
-    def test_detect_coordinate_mismatch(self):
-        """Test detecting coordinate mismatch"""
-        predicted_coords = (100, 200)
-        actual_coords = (150, 250)
-        max_tolerance = 10
+        interactable, issues = InteractabilityChecker.check_interactability(element_info)
 
-        distance = np.sqrt(
-            (predicted_coords[0] - actual_coords[0])**2 +
-            (predicted_coords[1] - actual_coords[1])**2
-        )
+        assert interactable is False
+        assert any('pointer-events' in issue.message.lower() for issue in issues)
 
-        is_mismatch = distance > max_tolerance
+    def test_check_interactability_aria_disabled(self):
+        """Test interactability check warns for aria-disabled"""
+        element_info = {
+            'attributes': {'aria_disabled': 'true'},
+            'computed_style': {'pointer_events': 'auto'},
+            'tag_name': 'button'
+        }
 
-        assert is_mismatch is True
+        interactable, issues = InteractabilityChecker.check_interactability(element_info)
 
-    def test_detect_timing_issue(self):
-        """Test detecting timing issues"""
-        import time
+        assert interactable is True
+        assert any(issue.severity == 'warning' and 'aria-disabled' in issue.message.lower() for issue in issues)
 
-        expected_duration = 0.1
-        start = time.time()
-        time.sleep(0.2)
-        actual_duration = time.time() - start
+    def test_check_interactability_readonly_input(self):
+        """Test interactability check warns for readonly input"""
+        element_info = {
+            'attributes': {'readonly': True},
+            'computed_style': {'pointer_events': 'auto'},
+            'tag_name': 'INPUT'
+        }
 
-        is_slow = actual_duration > expected_duration * 1.5
+        interactable, issues = InteractabilityChecker.check_interactability(element_info)
 
-        assert is_slow is True
-
-    def test_detect_state_inconsistency(self):
-        """Test detecting state inconsistency"""
-        element = Mock()
-        element.visible = True
-        element.display = "none"  # Inconsistent!
-
-        is_inconsistent = element.visible and element.display == "none"
-
-        assert is_inconsistent is True
+        assert interactable is True
+        assert any('readonly' in issue.message.lower() for issue in issues)
 
 
-class TestValidationReporting:
-    """Test validation reporting"""
+class TestStabilityChecker:
+    """Test StabilityChecker class"""
 
-    def test_create_validation_report(self):
-        """Test creating validation report"""
-        report = {
-            "timestamp": 1234567890.0,
-            "element_id": "submit-btn",
-            "validations": [
-                {"check": "visible", "passed": True},
-                {"check": "clickable", "passed": True},
-                {"check": "enabled", "passed": True}
+    @pytest.mark.asyncio
+    async def test_check_stability_stable_element(self):
+        """Test stability check for stable element"""
+        element_info = {
+            'position_history': [
+                {'x': 100, 'y': 200},
+                {'x': 100, 'y': 200},
+                {'x': 100, 'y': 200}
+            ]
+        }
+
+        stable, issues = await StabilityChecker.check_stability(element_info)
+
+        assert stable is True
+        assert all(issue.severity != 'error' for issue in issues)
+
+    @pytest.mark.asyncio
+    async def test_check_stability_moving_element(self):
+        """Test stability check fails for moving element"""
+        element_info = {
+            'position_history': [
+                {'x': 100, 'y': 200},
+                {'x': 105, 'y': 200},
+                {'x': 110, 'y': 200}
+            ]
+        }
+
+        stable, issues = await StabilityChecker.check_stability(element_info, threshold_px=2.0)
+
+        assert stable is False
+        assert any('unstable' in issue.message.lower() for issue in issues)
+
+    @pytest.mark.asyncio
+    async def test_check_stability_insufficient_data(self):
+        """Test stability check assumes stable with insufficient data"""
+        element_info = {
+            'position_history': [{'x': 100, 'y': 200}]
+        }
+
+        stable, issues = await StabilityChecker.check_stability(element_info)
+
+        assert stable is True
+
+    @pytest.mark.asyncio
+    async def test_check_stability_with_animations(self):
+        """Test stability check warns for CSS animations"""
+        element_info = {
+            'position_history': [
+                {'x': 100, 'y': 200},
+                {'x': 100, 'y': 200}
             ],
-            "overall_passed": True,
-            "confidence": 0.95
+            'has_animations': True
         }
 
-        assert "validations" in report
-        assert report["overall_passed"] is True
-        assert len(report["validations"]) == 3
+        stable, issues = await StabilityChecker.check_stability(element_info)
 
-    def test_aggregate_validation_results(self):
-        """Test aggregating validation results"""
-        validations = [
-            {"passed": True},
-            {"passed": True},
-            {"passed": False},
-            {"passed": True}
+        assert stable is True
+        assert any('animation' in issue.message.lower() for issue in issues)
+
+
+class TestHitTargetChecker:
+    """Test HitTargetChecker class"""
+
+    def test_check_hit_target_fully_clickable(self):
+        """Test hit target check for fully clickable element"""
+        element_info = {
+            'hit_test_results': [
+                {'is_target': True},
+                {'is_target': True},
+                {'is_target': True},
+                {'is_target': True},
+                {'is_target': True}
+            ]
+        }
+
+        is_target, issues = HitTargetChecker.check_hit_target(element_info)
+
+        assert is_target is True
+        assert all(issue.severity != 'error' for issue in issues)
+
+    def test_check_hit_target_completely_obscured(self):
+        """Test hit target check fails for completely obscured element"""
+        element_info = {
+            'hit_test_results': [
+                {'is_target': False, 'actual_element': 'div.overlay'},
+                {'is_target': False, 'actual_element': 'div.overlay'},
+                {'is_target': False, 'actual_element': 'div.overlay'}
+            ]
+        }
+
+        is_target, issues = HitTargetChecker.check_hit_target(element_info)
+
+        assert is_target is False
+        assert any('obscured' in issue.message.lower() for issue in issues)
+
+    def test_check_hit_target_partially_obscured(self):
+        """Test hit target check warns for partially obscured element"""
+        element_info = {
+            'hit_test_results': [
+                {'is_target': True},
+                {'is_target': True},
+                {'is_target': False, 'actual_element': 'div.overlay'},
+                {'is_target': False, 'actual_element': 'div.overlay'},
+                {'is_target': True}
+            ]
+        }
+
+        is_target, issues = HitTargetChecker.check_hit_target(element_info)
+
+        assert is_target is True
+        assert any('partially obscured' in issue.message.lower() for issue in issues)
+
+    def test_check_hit_target_no_data(self):
+        """Test hit target check with no data"""
+        element_info = {'hit_test_results': []}
+
+        is_target, issues = HitTargetChecker.check_hit_target(element_info)
+
+        assert is_target is True
+        assert any('no hit test data' in issue.message.lower() for issue in issues)
+
+    def test_analyze_z_index_positioned_element(self):
+        """Test z-index analysis for positioned element"""
+        element_info = {
+            'computed_style': {
+                'position': 'absolute',
+                'z_index': '10'
+            }
+        }
+
+        analysis = HitTargetChecker.analyze_z_index(element_info)
+
+        assert analysis['is_positioned'] is True
+        assert analysis['effective_z_index'] == 10
+        assert analysis['creates_stacking_context'] is True
+
+    def test_analyze_z_index_static_element(self):
+        """Test z-index analysis for static element"""
+        element_info = {
+            'computed_style': {
+                'position': 'static',
+                'z_index': '10'
+            }
+        }
+
+        analysis = HitTargetChecker.analyze_z_index(element_info)
+
+        assert analysis['is_positioned'] is False
+        assert analysis['effective_z_index'] is None
+
+
+class TestHoverStateChecker:
+    """Test HoverStateChecker class"""
+
+    def test_check_hover_state_valid(self):
+        """Test hover state check for valid hoverable element"""
+        element_info = {
+            'computed_style': {'pointer_events': 'auto', 'cursor': 'pointer'},
+            'has_hover_styles': True
+        }
+
+        hoverable, issues = HoverStateChecker.check_hover_state(element_info)
+
+        assert hoverable is True
+
+    def test_check_hover_state_pointer_events_none(self):
+        """Test hover state check fails for pointer-events: none"""
+        element_info = {
+            'computed_style': {'pointer_events': 'none'},
+            'has_hover_styles': False
+        }
+
+        hoverable, issues = HoverStateChecker.check_hover_state(element_info)
+
+        assert hoverable is False
+
+    def test_check_hover_state_no_hover_styles(self):
+        """Test hover state check warns for no hover styles"""
+        element_info = {
+            'computed_style': {'pointer_events': 'auto', 'cursor': 'default'},
+            'has_hover_styles': False
+        }
+
+        hoverable, issues = HoverStateChecker.check_hover_state(element_info)
+
+        assert hoverable is True
+        assert any('no :hover styles' in issue.message.lower() for issue in issues)
+
+
+class TestPreClickValidator:
+    """Test PreClickValidator orchestrator"""
+
+    @pytest.mark.asyncio
+    async def test_validate_full_checks_passing(self):
+        """Test full validation with all checks passing"""
+        element_info = {
+            'rect': {'width': 100, 'height': 50, 'left': 100, 'top': 100},
+            'computed_style': {
+                'display': 'block',
+                'visibility': 'visible',
+                'opacity': 1.0,
+                'pointer_events': 'auto',
+                'cursor': 'pointer'
+            },
+            'viewport': {'width': 1920, 'height': 1080},
+            'check_visibility': True,
+            'attributes': {},
+            'tag_name': 'button',
+            'position_history': [{'x': 100, 'y': 200}],
+            'hit_test_results': [{'is_target': True}],
+            'has_hover_styles': True
+        }
+
+        validator = PreClickValidator()
+        result = await validator.validate(element_info)
+
+        assert result.status == ValidationStatus.PASSED
+        assert result.can_proceed is True
+        assert result.passed is True
+
+    @pytest.mark.asyncio
+    async def test_validate_visibility_failure(self):
+        """Test validation fails on visibility check"""
+        element_info = {
+            'rect': {'width': 0, 'height': 0, 'left': 100, 'top': 100},
+            'computed_style': {'display': 'none', 'pointer_events': 'auto'},
+            'viewport': {'width': 1920, 'height': 1080},
+            'attributes': {},
+            'tag_name': 'button'
+        }
+
+        validator = PreClickValidator()
+        result = await validator.validate(element_info)
+
+        assert result.status == ValidationStatus.FAILED
+        assert result.can_proceed is False
+
+    @pytest.mark.asyncio
+    async def test_validate_specific_checks_only(self):
+        """Test validation with specific checks only"""
+        element_info = {
+            'rect': {'width': 100, 'height': 50, 'left': 100, 'top': 100},
+            'computed_style': {'display': 'block', 'visibility': 'visible', 'opacity': 1.0},
+            'viewport': {'width': 1920, 'height': 1080},
+            'check_visibility': True
+        }
+
+        validator = PreClickValidator()
+        result = await validator.validate(element_info, checks=['visibility'])
+
+        assert 'visibility' in result.details['check_results']
+        assert 'interactability' not in result.details['check_results']
+
+    @pytest.mark.asyncio
+    async def test_quick_validate(self):
+        """Test quick validation method"""
+        element_info = {
+            'rect': {'width': 100, 'height': 50, 'left': 100, 'top': 100},
+            'computed_style': {'display': 'block', 'visibility': 'visible', 'opacity': 1.0, 'pointer_events': 'auto'},
+            'viewport': {'width': 1920, 'height': 1080},
+            'check_visibility': True,
+            'attributes': {},
+            'tag_name': 'button',
+            'hit_test_results': [{'is_target': True}]
+        }
+
+        validator = PreClickValidator()
+        can_proceed = await validator.quick_validate(element_info)
+
+        assert can_proceed is True
+
+
+# ============================================================================
+# Test Post-Click Validation Module
+# ============================================================================
+
+class TestDOMChangeDetector:
+    """Test DOMChangeDetector class"""
+
+    @pytest.mark.asyncio
+    async def test_detect_attribute_changes_aria(self):
+        """Test detecting ARIA attribute changes"""
+        element_info = {
+            'attributes': {'aria_expanded': 'true', 'class': 'btn active'}
+        }
+        previous_state = {
+            'attributes': {'aria_expanded': 'false', 'class': 'btn'}
+        }
+
+        detector = DOMChangeDetector()
+        changes = await detector.detect_attribute_changes(element_info, previous_state, timeout_ms=10)
+
+        assert len(changes) > 0
+        assert any(c.change_type == ChangeType.ARIA_CHANGED for c in changes)
+        assert any(c.change_type == ChangeType.CLASS_CHANGED for c in changes)
+
+    @pytest.mark.asyncio
+    async def test_detect_attribute_changes_class(self):
+        """Test detecting class changes"""
+        element_info = {
+            'attributes': {'class': 'btn btn-primary active'}
+        }
+        previous_state = {
+            'attributes': {'class': 'btn btn-primary'}
+        }
+
+        detector = DOMChangeDetector()
+        changes = await detector.detect_attribute_changes(element_info, previous_state, timeout_ms=10)
+
+        class_changes = [c for c in changes if c.change_type == ChangeType.CLASS_CHANGED]
+        assert len(class_changes) > 0
+        assert 'active' in class_changes[0].details['added']
+
+    @pytest.mark.asyncio
+    async def test_detect_style_changes(self):
+        """Test detecting CSS style changes"""
+        element_info = {
+            'computed_style': {'display': 'block', 'opacity': '1', 'color': 'red'}
+        }
+        previous_state = {
+            'computed_style': {'display': 'block', 'opacity': '0.5', 'color': 'blue'}
+        }
+
+        detector = DOMChangeDetector()
+        changes = await detector.detect_style_changes(element_info, previous_state)
+
+        assert len(changes) > 0
+        style_change = changes[0]
+        assert style_change.change_type == ChangeType.STYLE_CHANGED
+        assert 'opacity' in style_change.details['style_changes']
+
+    @pytest.mark.asyncio
+    async def test_detect_text_changes(self):
+        """Test detecting text content changes"""
+        element_info = {'text_content': 'Clicked!'}
+        previous_state = {'text_content': 'Click Me'}
+
+        detector = DOMChangeDetector()
+        changes = await detector.detect_text_changes(element_info, previous_state)
+
+        assert len(changes) == 1
+        assert changes[0].change_type == ChangeType.TEXT_CHANGED
+        assert changes[0].details['current_text'] == 'Clicked!'
+
+
+class TestPageStateDetector:
+    """Test PageStateDetector class"""
+
+    @pytest.mark.asyncio
+    async def test_detect_url_change(self):
+        """Test detecting URL changes"""
+        detector = PageStateDetector()
+        change = await detector.detect_url_change(
+            'http://example.com/page1',
+            'http://example.com/page2'
+        )
+
+        assert change is not None
+        assert change.change_type == ChangeType.URL_CHANGED
+        assert change.details['current_url'] == 'http://example.com/page2'
+
+    @pytest.mark.asyncio
+    async def test_detect_no_url_change(self):
+        """Test no URL change detection"""
+        detector = PageStateDetector()
+        change = await detector.detect_url_change(
+            'http://example.com/page1',
+            'http://example.com/page1'
+        )
+
+        assert change is None
+
+    @pytest.mark.asyncio
+    async def test_detect_focus_change(self):
+        """Test detecting focus changes"""
+        detector = PageStateDetector()
+        change = await detector.detect_focus_change('#input1', '#input2')
+
+        assert change is not None
+        assert change.change_type == ChangeType.FOCUS_CHANGED
+
+    @pytest.mark.asyncio
+    async def test_detect_new_elements(self):
+        """Test detecting new elements"""
+        page_context = {
+            'new_elements': [
+                {'selector': '#modal', 'tag_name': 'div', 'role': 'dialog', 'type': 'modal'}
+            ]
+        }
+
+        detector = PageStateDetector()
+        changes = await detector.detect_new_elements(page_context)
+
+        assert len(changes) == 1
+        assert changes[0].change_type == ChangeType.ELEMENT_APPEARED
+
+    @pytest.mark.asyncio
+    async def test_detect_removed_elements(self):
+        """Test detecting removed elements"""
+        page_context = {
+            'removed_elements': [
+                {'selector': '#tooltip', 'tag_name': 'div'}
+            ]
+        }
+
+        detector = PageStateDetector()
+        changes = await detector.detect_removed_elements(page_context)
+
+        assert len(changes) == 1
+        assert changes[0].change_type == ChangeType.ELEMENT_DISAPPEARED
+
+
+class TestNetworkActivityDetector:
+    """Test NetworkActivityDetector class"""
+
+    @pytest.mark.asyncio
+    async def test_detect_network_requests(self):
+        """Test detecting network requests"""
+        network_log = [
+            {'url': '/api/submit', 'method': 'POST', 'status': 200, 'timestamp': 123.45},
+            {'url': '/api/data', 'method': 'GET', 'status': 200, 'timestamp': 123.46}
         ]
 
-        total = len(validations)
-        passed = sum(1 for v in validations if v["passed"])
-        pass_rate = passed / total
+        detector = NetworkActivityDetector()
+        changes = await detector.detect_network_requests(network_log)
 
-        assert pass_rate == 0.75
+        assert len(changes) == 2
+        assert all(c.change_type == ChangeType.NETWORK_REQUEST for c in changes)
 
-    def test_validation_failure_details(self):
-        """Test capturing validation failure details"""
-        failure = {
-            "check": "clickable",
-            "passed": False,
-            "reason": "Element has pointer-events: none",
-            "timestamp": 1234567890.0
+
+class TestEventValidation:
+    """Test EventValidation class"""
+
+    @pytest.mark.asyncio
+    async def test_validate_click_event_fired(self):
+        """Test validating click event was fired"""
+        event_log = [
+            {'type': 'mousedown', 'timestamp': 123.45},
+            {'type': 'click', 'timestamp': 123.46},
+            {'type': 'mouseup', 'timestamp': 123.47}
+        ]
+
+        validator = EventValidation()
+        fired = await validator.validate_click_event_fired(event_log)
+
+        assert fired is True
+
+    @pytest.mark.asyncio
+    async def test_validate_no_click_event(self):
+        """Test detecting no click event"""
+        event_log = []
+
+        validator = EventValidation()
+        fired = await validator.validate_click_event_fired(event_log)
+
+        assert fired is False
+
+    def test_analyze_event_propagation(self):
+        """Test analyzing event propagation"""
+        event_log = [
+            {
+                'type': 'click',
+                'stopped_propagation': False,
+                'default_prevented': True,
+                'bubbles': True,
+                'target': '#button',
+                'current_target': '#button'
+            }
+        ]
+
+        validator = EventValidation()
+        analysis = validator.analyze_event_propagation(event_log)
+
+        assert analysis['event_fired'] is True
+        assert analysis['propagated'] is True
+        assert analysis['prevented'] is True
+
+
+class TestPostClickValidator:
+    """Test PostClickValidator orchestrator"""
+
+    @pytest.mark.asyncio
+    async def test_validate_comprehensive(self):
+        """Test comprehensive post-click validation"""
+        element_info = {
+            'attributes': {'aria_expanded': 'true'},
+            'computed_style': {'opacity': '1'},
+            'text_content': 'Clicked'
+        }
+        previous_state = {
+            'attributes': {'aria_expanded': 'false'},
+            'computed_style': {'opacity': '1'},
+            'text_content': 'Click',
+            'url': 'http://example.com',
+            'focused_element': None
+        }
+        page_context = {
+            'url': 'http://example.com',
+            'focused_element': '#button',
+            'new_elements': [],
+            'removed_elements': [],
+            'network_log': [],
+            'event_log': [{'type': 'click'}]
         }
 
-        assert failure["passed"] is False
-        assert "reason" in failure
+        validator = PostClickValidator()
+        result = await validator.validate(
+            element_info,
+            previous_state,
+            page_context,
+            timeout_ms=10
+        )
 
-    def test_validation_metrics(self):
-        """Test collecting validation metrics"""
-        metrics = {
-            "total_validations": 100,
-            "passed": 95,
-            "failed": 5,
-            "pass_rate": 0.95,
-            "avg_confidence": 0.92,
-            "avg_duration": 0.05
+        assert result.success is True
+        assert len(result.changes_detected) > 0
+
+    @pytest.mark.asyncio
+    async def test_validate_expected_changes(self):
+        """Test validation with expected changes"""
+        element_info = {'attributes': {}, 'computed_style': {}, 'text_content': ''}
+        previous_state = {'attributes': {}, 'computed_style': {}, 'text_content': '', 'url': 'http://example.com'}
+        page_context = {
+            'url': 'http://example.com/new',
+            'new_elements': [],
+            'removed_elements': [],
+            'network_log': [],
+            'event_log': [{'type': 'click'}]
         }
 
-        assert metrics["pass_rate"] == 0.95
-        assert metrics["avg_confidence"] > 0.9
+        validator = PostClickValidator()
+        result = await validator.validate(
+            element_info,
+            previous_state,
+            page_context,
+            expected_changes=[ChangeType.URL_CHANGED],
+            timeout_ms=10
+        )
 
+        assert result.expected_changes_met is True
+
+    @pytest.mark.asyncio
+    async def test_quick_validate(self):
+        """Test quick validation method"""
+        page_context = {
+            'event_log': [{'type': 'click'}],
+            'url_changed': False,
+            'new_elements': [],
+            'network_log': []
+        }
+
+        validator = PostClickValidator()
+        has_change = await validator.quick_validate(page_context)
+
+        assert has_change is True
+
+
+class TestClickResultMonitor:
+    """Test ClickResultMonitor class"""
+
+    def test_log_result(self):
+        """Test logging click result"""
+        monitor = ClickResultMonitor()
+
+        from mcp_server.validation.post_click import PostClickValidationResult
+
+        result = PostClickValidationResult(
+            success=True,
+            changes_detected=[],
+            expected_changes_met=True,
+            verification_time_ms=50.0,
+            details={}
+        )
+
+        monitor.log_result('#button', result, 'navigation')
+
+        assert len(monitor.click_results) == 1
+        assert monitor.click_results[0]['selector'] == '#button'
+
+    def test_get_statistics(self):
+        """Test getting statistics from monitor"""
+        monitor = ClickResultMonitor()
+
+        from mcp_server.validation.post_click import PostClickValidationResult, StateChange
+
+        # Log some results
+        for i in range(10):
+            result = PostClickValidationResult(
+                success=i % 2 == 0,
+                changes_detected=[
+                    StateChange(ChangeType.URL_CHANGED, 123.45, {})
+                ],
+                expected_changes_met=True,
+                verification_time_ms=50.0,
+                details={}
+            )
+            monitor.log_result(f'#button{i}', result)
+
+        stats = monitor.get_statistics()
+
+        assert stats['total_clicks'] == 10
+        assert stats['successful'] == 5
+        assert stats['success_rate'] == 0.5
+
+
+# ============================================================================
+# Test Confidence Scoring Module
+# ============================================================================
+
+class TestClickConfidenceCalculator:
+    """Test ClickConfidenceCalculator class"""
+
+    @pytest.mark.asyncio
+    async def test_calculate_confidence_high(self):
+        """Test calculating high confidence score"""
+        element_info = {
+            'rect': {'width': 100, 'height': 50, 'left': 100, 'top': 100},
+            'computed_style': {
+                'display': 'block',
+                'visibility': 'visible',
+                'opacity': 1.0,
+                'pointer_events': 'auto'
+            },
+            'viewport': {'width': 1920, 'height': 1080},
+            'attributes': {},
+            'tag_name': 'button',
+            'position_history': [{'x': 100, 'y': 200, 'width': 100, 'height': 50}],
+            'hit_test_results': [{'is_target': True}]
+        }
+        page_context = {
+            'ready_state': 'complete',
+            'active_animations': 0,
+            'pending_requests': 0
+        }
+
+        calculator = ClickConfidenceCalculator()
+        result = await calculator.calculate_confidence(element_info, page_context)
+
+        assert result.confidence >= 80
+        assert result.recommendation in [Recommendation.SAFE_TO_CLICK, Recommendation.PROBABLY_SAFE]
+        assert result.safe is True
+
+    def test_calculate_visibility_score_perfect(self):
+        """Test calculating perfect visibility score"""
+        element_info = {
+            'rect': {'width': 100, 'height': 50, 'left': 100, 'top': 100},
+            'computed_style': {
+                'display': 'block',
+                'visibility': 'visible',
+                'opacity': 1.0
+            },
+            'viewport': {'width': 1920, 'height': 1080}
+        }
+
+        calculator = ClickConfidenceCalculator()
+        score = calculator.calculate_visibility_score(element_info)
+
+        assert score == 1.0
+
+    def test_calculate_visibility_score_low_opacity(self):
+        """Test visibility score with low opacity"""
+        element_info = {
+            'rect': {'width': 100, 'height': 50, 'left': 100, 'top': 100},
+            'computed_style': {
+                'display': 'block',
+                'visibility': 'visible',
+                'opacity': 0.5
+            },
+            'viewport': {'width': 1920, 'height': 1080}
+        }
+
+        calculator = ClickConfidenceCalculator()
+        score = calculator.calculate_visibility_score(element_info)
+
+        assert score == 0.5
+
+    def test_calculate_interactability_score_perfect(self):
+        """Test calculating perfect interactability score"""
+        element_info = {
+            'attributes': {},
+            'computed_style': {'pointer_events': 'auto'},
+            'tag_name': 'button'
+        }
+
+        calculator = ClickConfidenceCalculator()
+        score = calculator.calculate_interactability_score(element_info)
+
+        assert score == 1.0
+
+    def test_calculate_interactability_score_disabled(self):
+        """Test interactability score for disabled element"""
+        element_info = {
+            'attributes': {'disabled': True},
+            'computed_style': {'pointer_events': 'auto'},
+            'tag_name': 'button'
+        }
+
+        calculator = ClickConfidenceCalculator()
+        score = calculator.calculate_interactability_score(element_info)
+
+        assert score == 0.0
+
+    @pytest.mark.asyncio
+    async def test_calculate_stability_score_stable(self):
+        """Test calculating stability score for stable element"""
+        element_info = {
+            'position_history': [
+                {'x': 100, 'y': 200, 'width': 100, 'height': 50},
+                {'x': 100, 'y': 200, 'width': 100, 'height': 50}
+            ]
+        }
+
+        calculator = ClickConfidenceCalculator()
+        score = await calculator.calculate_stability_score(element_info)
+
+        assert score == 1.0
+
+    @pytest.mark.asyncio
+    async def test_calculate_stability_score_moving(self):
+        """Test calculating stability score for moving element"""
+        element_info = {
+            'position_history': [
+                {'x': 100, 'y': 200, 'width': 100, 'height': 50},
+                {'x': 110, 'y': 210, 'width': 100, 'height': 50}
+            ]
+        }
+
+        calculator = ClickConfidenceCalculator()
+        score = await calculator.calculate_stability_score(element_info)
+
+        assert score < 1.0
+
+    def test_calculate_hit_target_score_perfect(self):
+        """Test calculating perfect hit target score"""
+        element_info = {
+            'hit_test_results': [
+                {'is_target': True},
+                {'is_target': True},
+                {'is_target': True}
+            ]
+        }
+
+        calculator = ClickConfidenceCalculator()
+        score = calculator.calculate_hit_target_score(element_info)
+
+        assert score == 1.0
+
+    def test_calculate_hit_target_score_partial(self):
+        """Test calculating partial hit target score"""
+        element_info = {
+            'hit_test_results': [
+                {'is_target': True},
+                {'is_target': False},
+                {'is_target': True}
+            ]
+        }
+
+        calculator = ClickConfidenceCalculator()
+        score = calculator.calculate_hit_target_score(element_info)
+
+        assert score == pytest.approx(2/3, rel=0.01)
+
+    def test_calculate_timing_score_perfect(self):
+        """Test calculating perfect timing score"""
+        page_context = {
+            'ready_state': 'complete',
+            'active_animations': 0,
+            'pending_requests': 0
+        }
+
+        calculator = ClickConfidenceCalculator()
+        score = calculator.calculate_timing_score(page_context)
+
+        assert score == 1.0
+
+    def test_calculate_timing_score_loading(self):
+        """Test timing score during page loading"""
+        page_context = {
+            'ready_state': 'loading',
+            'active_animations': 2,
+            'pending_requests': 3
+        }
+
+        calculator = ClickConfidenceCalculator()
+        score = calculator.calculate_timing_score(page_context)
+
+        assert score < 1.0
+
+
+class TestClickStrategy:
+    """Test click strategy selection"""
+
+    def test_select_direct_click_strategy(self):
+        """Test selecting direct click strategy for high confidence"""
+        strategy = select_click_strategy(95, ActionType.STANDARD_CLICK)
+
+        assert strategy == ClickStrategy.DIRECT_CLICK
+
+    def test_select_retry_strategy(self):
+        """Test selecting retry strategy for medium confidence"""
+        strategy = select_click_strategy(60, ActionType.STANDARD_CLICK)
+
+        assert strategy == ClickStrategy.RETRY_WITH_IMPROVEMENTS
+
+    def test_select_javascript_strategy(self):
+        """Test selecting JavaScript click strategy for low confidence"""
+        strategy = select_click_strategy(40, ActionType.STANDARD_CLICK)
+
+        assert strategy == ClickStrategy.JAVASCRIPT_CLICK
+
+    def test_select_manual_intervention(self):
+        """Test selecting manual intervention for very low confidence"""
+        strategy = select_click_strategy(20, ActionType.STANDARD_CLICK)
+
+        assert strategy == ClickStrategy.MANUAL_INTERVENTION_REQUIRED
+
+
+class TestClickConfidenceMonitor:
+    """Test ClickConfidenceMonitor class"""
+
+    def test_log_click_attempt(self):
+        """Test logging click attempt"""
+        monitor = ClickConfidenceMonitor()
+
+        from mcp_server.validation.confidence import ConfidenceResult, ConfidenceScores
+
+        result = ConfidenceResult(
+            confidence=85,
+            scores=ConfidenceScores(1.0, 1.0, 1.0, 1.0, 1.0),
+            recommendation=Recommendation.SAFE_TO_CLICK,
+            issues=[],
+            safe=True,
+            details={}
+        )
+
+        monitor.log_click_attempt('#button', result, True)
+
+        assert len(monitor.click_history) == 1
+
+    def test_get_statistics(self):
+        """Test getting statistics from monitor"""
+        monitor = ClickConfidenceMonitor()
+
+        from mcp_server.validation.confidence import ConfidenceResult, ConfidenceScores
+
+        # Log multiple attempts
+        for i in range(10):
+            result = ConfidenceResult(
+                confidence=80 + i,
+                scores=ConfidenceScores(1.0, 1.0, 1.0, 1.0, 1.0),
+                recommendation=Recommendation.SAFE_TO_CLICK,
+                issues=[],
+                safe=True,
+                details={}
+            )
+            monitor.log_click_attempt(f'#button{i}', result, True)
+
+        stats = monitor.get_statistics()
+
+        assert stats['total_attempts'] == 10
+        assert stats['successful'] == 10
+        assert stats['avg_confidence'] == 84.5
+
+
+# ============================================================================
+# Test Retry Module
+# ============================================================================
+
+class TestDelayCalculator:
+    """Test DelayCalculator class"""
+
+    def test_calculate_exponential_backoff(self):
+        """Test exponential backoff calculation"""
+        delay = DelayCalculator.calculate_exponential_backoff(
+            attempt=2,
+            base_delay_ms=1000,
+            backoff_multiplier=2.0
+        )
+
+        assert delay == 4000  # 1000 * 2^2
+
+    def test_calculate_exponential_backoff_with_max(self):
+        """Test exponential backoff respects max delay"""
+        delay = DelayCalculator.calculate_exponential_backoff(
+            attempt=10,
+            base_delay_ms=1000,
+            backoff_multiplier=2.0,
+            max_delay_ms=5000
+        )
+
+        assert delay == 5000
+
+    def test_add_jitter(self):
+        """Test adding jitter to delay"""
+        base_delay = 1000
+        jittered = DelayCalculator.add_jitter(base_delay, jitter_factor=0.5)
+
+        # Jittered delay should be within range
+        assert base_delay <= jittered <= base_delay * 1.5
+
+    def test_calculate_linear_backoff(self):
+        """Test linear backoff calculation"""
+        delay = DelayCalculator.calculate_linear_backoff(
+            attempt=3,
+            base_delay_ms=1000,
+            increment_ms=500
+        )
+
+        assert delay == 2500  # 1000 + (500 * 3)
+
+    def test_calculate_delay_exponential_strategy(self):
+        """Test delay calculation with exponential strategy"""
+        config = RetryConfig(
+            base_delay_ms=1000,
+            strategy=RetryStrategy.EXPONENTIAL,
+            backoff_multiplier=2.0
+        )
+
+        delay = DelayCalculator.calculate_delay(2, config)
+
+        assert delay == 4000
+
+    def test_calculate_delay_fixed_strategy(self):
+        """Test delay calculation with fixed strategy"""
+        config = RetryConfig(
+            base_delay_ms=1000,
+            strategy=RetryStrategy.FIXED
+        )
+
+        delay = DelayCalculator.calculate_delay(5, config)
+
+        assert delay == 1000
+
+
+class TestErrorClassifier:
+    """Test ErrorClassifier class"""
+
+    def test_classify_click_intercepted_error(self):
+        """Test classifying click intercepted error"""
+        error = ElementClickInterceptedError()
+
+        category = ErrorClassifier.classify_error(error)
+
+        assert category == ErrorCategory.ELEMENT_CLICK_INTERCEPTED
+
+    def test_classify_not_interactable_error(self):
+        """Test classifying not interactable error"""
+        error = ElementNotInteractableError()
+
+        category = ErrorClassifier.classify_error(error)
+
+        assert category == ErrorCategory.ELEMENT_NOT_INTERACTABLE
+
+    def test_classify_stale_element_error(self):
+        """Test classifying stale element error"""
+        error = StaleElementError()
+
+        category = ErrorClassifier.classify_error(error)
+
+        assert category == ErrorCategory.STALE_ELEMENT_REFERENCE
+
+    def test_classify_generic_error_by_message(self):
+        """Test classifying generic error by message"""
+        error = Exception("Element click intercepted by overlay")
+
+        category = ErrorClassifier.classify_error(error)
+
+        assert category == ErrorCategory.ELEMENT_CLICK_INTERCEPTED
+
+    def test_is_retryable_default(self):
+        """Test default retryable errors"""
+        error = ElementClickInterceptedError()
+
+        is_retryable = ErrorClassifier.is_retryable(error)
+
+        assert is_retryable is True
+
+    def test_is_not_retryable(self):
+        """Test non-retryable error"""
+        error = Exception("Unknown error")
+
+        is_retryable = ErrorClassifier.is_retryable(error)
+
+        assert is_retryable is False
+
+
+class TestRetryExecutor:
+    """Test RetryExecutor class"""
+
+    @pytest.mark.asyncio
+    async def test_execute_success_first_attempt(self):
+        """Test successful execution on first attempt"""
+        async def operation():
+            return "success"
+
+        executor = RetryExecutor()
+        result = await executor.execute(operation)
+
+        assert result.success is True
+        assert result.attempts == 1
+        assert result.result == "success"
+
+    @pytest.mark.asyncio
+    async def test_execute_success_after_retries(self):
+        """Test successful execution after retries"""
+        attempt_count = 0
+
+        async def operation():
+            nonlocal attempt_count
+            attempt_count += 1
+            if attempt_count < 3:
+                raise ElementClickInterceptedError()
+            return "success"
+
+        config = RetryConfig(max_retries=5, base_delay_ms=10)
+        executor = RetryExecutor(config)
+        result = await executor.execute(operation)
+
+        assert result.success is True
+        assert result.attempts == 3
+
+    @pytest.mark.asyncio
+    async def test_execute_failure_max_retries(self):
+        """Test failure after max retries"""
+        async def operation():
+            raise ElementClickInterceptedError()
+
+        config = RetryConfig(max_retries=3, base_delay_ms=10)
+        executor = RetryExecutor(config)
+        result = await executor.execute(operation)
+
+        assert result.success is False
+        assert result.attempts == 3
+
+    @pytest.mark.asyncio
+    async def test_execute_non_retryable_error(self):
+        """Test non-retryable error stops immediately"""
+        async def operation():
+            raise ValueError("Non-retryable error")
+
+        config = RetryConfig(max_retries=5, base_delay_ms=10)
+        executor = RetryExecutor(config)
+        result = await executor.execute(operation)
+
+        assert result.success is False
+        assert result.attempts == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_with_condition(self):
+        """Test execute with success condition"""
+        attempt_count = 0
+
+        async def operation():
+            nonlocal attempt_count
+            attempt_count += 1
+            return attempt_count
+
+        def success_condition(result):
+            return result >= 3
+
+        config = RetryConfig(
+            max_retries=5,
+            base_delay_ms=10,
+            retryable_errors=[
+                ErrorCategory.ELEMENT_CLICK_INTERCEPTED,
+                ErrorCategory.ELEMENT_NOT_INTERACTABLE,
+                ErrorCategory.STALE_ELEMENT_REFERENCE,
+                ErrorCategory.TIMEOUT,
+                ErrorCategory.UNKNOWN  # Add UNKNOWN to retryable errors
+            ]
+        )
+        executor = RetryExecutor(config)
+        result = await executor.execute_with_condition(operation, success_condition, config)
+
+        assert result.success is True
+        assert result.result == 3
+
+
+class TestCircuitBreaker:
+    """Test CircuitBreaker class"""
+
+    @pytest.mark.asyncio
+    async def test_circuit_closed_normal_operation(self):
+        """Test circuit breaker in closed state"""
+        async def operation():
+            return "success"
+
+        breaker = CircuitBreaker(failure_threshold=3)
+        result = await breaker.execute(operation)
+
+        assert result == "success"
+        assert breaker.state == "CLOSED"
+
+    @pytest.mark.asyncio
+    async def test_circuit_opens_after_failures(self):
+        """Test circuit breaker opens after threshold failures"""
+        async def operation():
+            raise Exception("Failure")
+
+        breaker = CircuitBreaker(failure_threshold=3, recovery_timeout_ms=1000)
+
+        # Trigger failures
+        for _ in range(3):
+            with pytest.raises(Exception):
+                await breaker.execute(operation)
+
+        assert breaker.state == "OPEN"
+
+    @pytest.mark.asyncio
+    async def test_circuit_half_open_after_timeout(self):
+        """Test circuit breaker transitions to half-open after timeout"""
+        async def operation():
+            raise Exception("Failure")
+
+        breaker = CircuitBreaker(failure_threshold=2, recovery_timeout_ms=50)
+
+        # Open the circuit
+        for _ in range(2):
+            with pytest.raises(Exception):
+                await breaker.execute(operation)
+
+        assert breaker.state == "OPEN"
+
+        # Wait for recovery timeout
+        await asyncio.sleep(0.1)
+
+        # Next call should transition to HALF_OPEN
+        with pytest.raises(Exception):
+            await breaker.execute(operation)
+
+        # Should be back to OPEN after failure in HALF_OPEN
+        assert breaker.state == "OPEN"
+
+    def test_circuit_reset(self):
+        """Test resetting circuit breaker"""
+        breaker = CircuitBreaker()
+        breaker.state = "OPEN"
+        breaker.failure_count = 10
+
+        breaker.reset()
+
+        assert breaker.state == "CLOSED"
+        assert breaker.failure_count == 0
+
+
+class TestAdaptiveRetryExecutor:
+    """Test AdaptiveRetryExecutor class"""
+
+    @pytest.mark.asyncio
+    async def test_adaptive_executor_learns(self):
+        """Test adaptive executor adapts configuration"""
+        executor = AdaptiveRetryExecutor()
+
+        # Simulate multiple failures to trigger adaptation
+        async def failing_operation():
+            raise ElementClickInterceptedError()
+
+        config = RetryConfig(max_retries=2, base_delay_ms=100)
+
+        for _ in range(10):
+            await executor.execute(failing_operation, config)
+
+        # After failures, should have adapted
+        assert len(executor.history) == 10
+
+    def test_get_statistics(self):
+        """Test getting statistics from adaptive executor"""
+        executor = AdaptiveRetryExecutor()
+
+        from mcp_server.validation.retry import RetryResult, RetryAttempt
+
+        # Add some mock history
+        for i in range(5):
+            result = RetryResult(
+                success=i % 2 == 0,
+                attempts=2,
+                total_time_ms=100.0,
+                result=None,
+                error=None,
+                attempt_history=[
+                    RetryAttempt(0, datetime.now(), None, ErrorCategory.UNKNOWN, 0, False),
+                    RetryAttempt(1, datetime.now(), None, ErrorCategory.UNKNOWN, 0, True)
+                ]
+            )
+            executor.history.append(result)
+
+        stats = executor.get_statistics()
+
+        assert stats['total_operations'] == 5
+        assert stats['avg_attempts'] == 2.0
+
+
+# ============================================================================
+# Run Tests
+# ============================================================================
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    pytest.main([__file__, "-v", "--tb=short"])

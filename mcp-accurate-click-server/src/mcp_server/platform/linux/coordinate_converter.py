@@ -14,7 +14,7 @@ Handles negative coordinates for monitors positioned left/above primary display.
 import os
 import subprocess
 import logging
-from typing import Tuple, Optional, Dict, List
+from typing import Tuple, Optional, Dict, List, Any
 from dataclasses import dataclass
 import re
 
@@ -814,8 +814,19 @@ class LinuxCoordinateConverter(PlatformCoordinateConverter):
             # Find monitor with minimum distance to point
             def distance_to_monitor(m: MonitorInfo) -> float:
                 # Calculate distance from point to monitor rectangle
-                dx = max(m.left - x, 0, x - m.right)
-                dy = max(m.top - y, 0, y - m.bottom)
+                # Distance is 0 if point is inside the rectangle bounds
+                dx = 0
+                if x < m.left:
+                    dx = m.left - x
+                elif x > m.right:
+                    dx = x - m.right
+
+                dy = 0
+                if y < m.top:
+                    dy = m.top - y
+                elif y > m.bottom:
+                    dy = y - m.bottom
+
                 return (dx * dx + dy * dy) ** 0.5
 
             return min(monitors, key=distance_to_monitor)
@@ -896,7 +907,7 @@ class LinuxCoordinateConverter(PlatformCoordinateConverter):
 
         logger.info("Display configuration refreshed")
 
-    def get_display_summary(self) -> Dict[str, any]:
+    def get_display_summary(self) -> Dict[str, Any]:
         """
         Get comprehensive display information for debugging.
 

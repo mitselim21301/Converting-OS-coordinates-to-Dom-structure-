@@ -46,10 +46,9 @@ class LinuxInputSimulator(PlatformInputSimulator):
 
     def __new__(cls):
         """Singleton pattern - only one instance per process."""
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self):
@@ -128,6 +127,15 @@ class LinuxInputSimulator(PlatformInputSimulator):
 
         logger.info(f"Available input methods: {', '.join(methods)}")
         logger.info(f"Primary method: {methods[0]}")
+
+    def __del__(self):
+        """Cleanup resources - close X11 display connection if open."""
+        if hasattr(self, '_xlib_display') and self._xlib_display:
+            try:
+                self._xlib_display.close()
+                logger.debug("X11 display connection closed")
+            except Exception as e:
+                logger.debug(f"Error closing X11 display: {e}")
 
     def _detect_display_server(self) -> str:
         """
@@ -244,9 +252,14 @@ class LinuxInputSimulator(PlatformInputSimulator):
             MouseButton.LEFT: self._pynput_button.left,
             MouseButton.RIGHT: self._pynput_button.right,
             MouseButton.MIDDLE: self._pynput_button.middle,
-            MouseButton.X1: self._pynput_button.x1,
-            MouseButton.X2: self._pynput_button.x2,
         }
+
+        # Add X1 and X2 buttons only if available (older pynput versions don't have these)
+        if hasattr(self._pynput_button, 'x1'):
+            mapping[MouseButton.X1] = self._pynput_button.x1
+        if hasattr(self._pynput_button, 'x2'):
+            mapping[MouseButton.X2] = self._pynput_button.x2
+
         return mapping.get(button)
 
     def _xlib_button_map(self, button: MouseButton) -> int:
