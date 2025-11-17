@@ -20,6 +20,7 @@ import os
 import re
 import subprocess
 import logging
+import threading
 from typing import Optional, List, Tuple, Dict, Any
 from pathlib import Path
 
@@ -117,6 +118,7 @@ class LinuxWindowManager(PlatformWindowManager):
     # X11 Atoms we need to query
     X11_ATOMS = [
         '_NET_CLIENT_LIST',
+        '_NET_CLIENT_LIST_STACKING',
         '_NET_ACTIVE_WINDOW',
         '_NET_WM_NAME',
         '_NET_WM_VISIBLE_NAME',
@@ -901,10 +903,11 @@ class LinuxWindowManager(PlatformWindowManager):
             try:
                 # Get all windows from the window manager
                 # Query _NET_CLIENT_LIST_STACKING for window stack order (bottom to top)
-                if self._net_client_list_stacking:
+                if '_NET_CLIENT_LIST_STACKING' in self.x_atoms:
                     try:
+                        stacking_atom = self.x_atoms['_NET_CLIENT_LIST_STACKING']
                         prop = self.x_root.get_full_property(
-                            self._net_client_list_stacking,
+                            stacking_atom,
                             X.AnyPropertyType
                         )
                         if prop and prop.value:
@@ -1048,14 +1051,27 @@ class LinuxWindowManager(PlatformWindowManager):
 
         return (screen_x, screen_y)
 
+    def __del__(self):
+        """Cleanup resources - close X11 display connection if open."""
+        if hasattr(self, 'x_display') and self.x_display:
+            try:
+                self.x_display.close()
+                logger.debug("X11 display connection closed in WindowManager")
+            except Exception as e:
+                logger.debug(f"Error closing X11 display in WindowManager: {e}")
+
 
 # Singleton instance
 _window_manager: Optional[LinuxWindowManager] = None
+_window_manager_lock = threading.Lock()
 
 
 def get_window_manager() -> LinuxWindowManager:
-    """Get or create singleton LinuxWindowManager instance."""
+    """Get or create singleton LinuxWindowManager instance (thread-safe)."""
     global _window_manager
     if _window_manager is None:
-        _window_manager = LinuxWindowManager()
+        with _window_manager_lock:
+            # Double-check pattern inside lock
+            if _window_manager is None:
+                _window_manager = LinuxWindowManager()
     return _window_manager

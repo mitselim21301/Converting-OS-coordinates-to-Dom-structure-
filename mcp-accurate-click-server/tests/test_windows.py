@@ -13,6 +13,11 @@ Tests for Windows-specific coordinate transformations:
 import pytest
 import numpy as np
 from unittest.mock import Mock, MagicMock, patch
+
+# Import test utilities from conftest
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
 from conftest import (
     sample_calibration_points,
     assert_coordinates_close,

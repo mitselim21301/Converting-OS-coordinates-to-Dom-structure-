@@ -14,6 +14,7 @@ Handles negative coordinates for monitors positioned left/above primary display.
 import os
 import subprocess
 import logging
+import threading
 from typing import Tuple, Optional, Dict, List, Any
 from dataclasses import dataclass
 import re
@@ -952,11 +953,12 @@ class LinuxCoordinateConverter(PlatformCoordinateConverter):
 
 # Singleton instance
 _converter: Optional[LinuxCoordinateConverter] = None
+_converter_lock = threading.Lock()
 
 
 def get_converter(dpi_handler=None) -> LinuxCoordinateConverter:
     """
-    Get or create singleton LinuxCoordinateConverter instance.
+    Get or create singleton LinuxCoordinateConverter instance (thread-safe).
 
     Args:
         dpi_handler: Optional PlatformDPIHandler instance
@@ -966,5 +968,8 @@ def get_converter(dpi_handler=None) -> LinuxCoordinateConverter:
     """
     global _converter
     if _converter is None:
-        _converter = LinuxCoordinateConverter(dpi_handler)
+        with _converter_lock:
+            # Double-check pattern inside lock
+            if _converter is None:
+                _converter = LinuxCoordinateConverter(dpi_handler)
     return _converter

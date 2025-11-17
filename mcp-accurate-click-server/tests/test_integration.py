@@ -15,6 +15,11 @@ import numpy as np
 import time
 import json
 from unittest.mock import Mock, MagicMock, patch
+
+# Import test utilities from conftest
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
 from conftest import (
     MockBoundingBox,
     MockDOMElement,
