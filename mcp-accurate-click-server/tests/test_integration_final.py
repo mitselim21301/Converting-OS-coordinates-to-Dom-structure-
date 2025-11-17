@@ -136,12 +136,15 @@ class TestImportVerification:
     def test_import_vision_module(self):
         """Test importing from vision module (optional)"""
         try:
-            from mcp_server.vision import (
-                ScreenshotCapture,
-                VisionValidator,
-            )
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=ImportWarning)
+                from mcp_server.vision import (
+                    ScreenshotCapture,
+                    VisionValidator,
+                )
             logger.info("✓ Vision module imports successful")
-        except ImportError:
+        except (ImportError, ImportWarning):
             logger.info("⊘ Vision module not available (optional)")
 
     def test_import_windows_module_availability(self):
@@ -401,6 +404,12 @@ class TestCoordinatePipeline:
             y=200,
             width=200,
             height=100,
+            top=200,
+            right=300,
+            bottom=300,
+            left=100,
+            page_x=100,
+            page_y=200,
         )
 
         assert bbox.right == 300
@@ -419,6 +428,10 @@ class TestCoordinatePipeline:
             y=200,
             width=200,
             height=100,
+            top=200,
+            right=300,
+            bottom=300,
+            left=100,
             page_x=100,
             page_y=500,  # With scroll
         )
@@ -426,10 +439,23 @@ class TestCoordinatePipeline:
         element = DOMElement(
             tag_name="button",
             element_id="btn1",
+            class_names=["btn", "primary"],
+            role="button",
+            aria_label=None,
+            accessible_name="Submit",
+            text_content="Submit",
+            inner_text="Submit",
+            value=None,
+            placeholder=None,
             bounding_box=bbox,
             visible=True,
+            enabled=True,
+            focusable=True,
             clickable=True,
-            z_index=10,
+            xpath="//button[@id='btn1']",
+            css_selector="#btn1",
+            depth=2,
+            parent_tag="div",
         )
 
         # Viewport coords (x, y)
@@ -675,11 +701,38 @@ class TestIntegrationSmoke:
         """Smoke test: Create DOM element"""
         from mcp_server.dom import DOMElement, BoundingBox
 
-        bbox = BoundingBox(x=0, y=0, width=100, height=50)
+        bbox = BoundingBox(
+            x=0,
+            y=0,
+            width=100,
+            height=50,
+            top=0,
+            right=100,
+            bottom=50,
+            left=0,
+            page_x=0,
+            page_y=0,
+        )
         element = DOMElement(
             tag_name="button",
             element_id="test",
+            class_names=[],
+            role="button",
+            aria_label=None,
+            accessible_name=None,
+            text_content="Test",
+            inner_text="Test",
+            value=None,
+            placeholder=None,
             bounding_box=bbox,
+            visible=True,
+            enabled=True,
+            focusable=True,
+            clickable=True,
+            xpath="//button[@id='test']",
+            css_selector="#test",
+            depth=1,
+            parent_tag="body",
         )
 
         assert element is not None
